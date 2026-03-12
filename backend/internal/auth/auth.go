@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var Secret string
@@ -19,17 +20,24 @@ func init() {
 }
 
 type Claims struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
+	ID          string `json:"id"`
+	Username    string `json:"username"`
+	Role        string `json:"role"`
+	DisplayName string `json:"display_name"`
 	jwt.RegisteredClaims
 }
 
 func SignToken(id, username, role string) (string, error) {
+	return SignTokenWithDisplayName(id, username, role, "")
+}
+
+// SignTokenWithDisplayName 带显示名称的 Token
+func SignTokenWithDisplayName(id, username, role, displayName string) (string, error) {
 	claims := Claims{
-		ID:       id,
-		Username: username,
-		Role:     role,
+		ID:          id,
+		Username:    username,
+		Role:        role,
+		DisplayName: displayName,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * 24 * time.Hour)),
 		},
@@ -87,4 +95,9 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 		c.JSON(403, gin.H{"error": "权限不足"})
 		c.Abort()
 	}
+}
+
+// CheckPassword 检查密码
+func CheckPassword(hashedPassword, password string) error {
+	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
 }
