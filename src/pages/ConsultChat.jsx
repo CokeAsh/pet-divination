@@ -6,12 +6,17 @@ const TAROT_POSITIONS = ['T1', 'T2', 'T3', 'T4', 'T5']
 const LENORMAND_POSITIONS = ['L1', 'L2', 'L3']
 
 function getDeviceId() {
-  let id = localStorage.getItem('pet_device_id')
-  if (!id) {
-    id = crypto.randomUUID?.() ?? `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`
-    localStorage.setItem('pet_device_id', id)
+  try {
+    let id = localStorage.getItem('pet_device_id')
+    if (!id) {
+      const canUseCrypto = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      id = canUseCrypto ? crypto.randomUUID() : `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`
+      localStorage.setItem('pet_device_id', id)
+    }
+    return id
+  } catch {
+    return `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`
   }
-  return id
 }
 
 function getOpeningMessage(characterId) {
@@ -27,6 +32,19 @@ function generateTitle(messages) {
 
 function filterForSave(messages) {
   return messages.filter((message) => !message.isDrawPrompt)
+}
+
+function normalizeMessage(message) {
+  if (!message || typeof message !== 'object') {
+    return { role: 'assistant', content: String(message ?? '') }
+  }
+  return {
+    ...message,
+    role: message.role || 'assistant',
+    content: typeof message.content === 'string' ? message.content : String(message.content ?? ''),
+    tarot: Array.isArray(message.tarot) ? message.tarot : [],
+    lenormand: Array.isArray(message.lenormand) ? message.lenormand : [],
+  }
 }
 
 function formatCardsContent(tarot, lenormand) {
@@ -57,9 +75,10 @@ function getTheme(characterId) {
 }
 
 function MessageBubble({ message, character, theme }) {
-  const isAssistant = message.role === 'assistant'
+  const safeMessage = normalizeMessage(message)
+  const isAssistant = safeMessage.role === 'assistant'
 
-  if (message.isCardDraw) {
+  if (safeMessage.isCardDraw) {
     return (
       <div className="my-4 flex justify-center">
         <div className={`w-full max-w-sm rounded-2xl border px-4 py-4 ${theme.panelBorder} ${theme.isYiqing ? 'bg-verdant-50' : 'bg-mystic-50'}`}>
@@ -67,7 +86,7 @@ function MessageBubble({ message, character, theme }) {
             {character.name} 为你抽取的牌面
           </p>
           <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
-            {message.tarot.map((card, index) => (
+            {safeMessage.tarot.map((card, index) => (
               <div key={`${card.id}-${index}`} className="flex w-14 flex-shrink-0 flex-col items-center rounded-xl border border-white/70 bg-white px-1 py-2 text-center">
                 <span className="mb-1 text-[10px] leading-tight text-stone-400">{TAROT_POSITIONS[index]}</span>
                 <span className={`text-lg ${card.reversed ? 'inline-block rotate-180' : ''}`}>{card.emoji}</span>
@@ -79,7 +98,7 @@ function MessageBubble({ message, character, theme }) {
             ))}
           </div>
           <div className="grid grid-cols-3 gap-1.5">
-            {message.lenormand.map((card, index) => (
+            {safeMessage.lenormand.map((card, index) => (
               <div key={`${card.id}-${index}`} className="flex flex-col items-center rounded-xl border border-white/70 bg-white/80 px-1 py-2 text-center">
                 <span className="mb-1 text-[10px] leading-tight text-stone-400">{LENORMAND_POSITIONS[index]}</span>
                 <span className="text-lg">{card.emoji}</span>
@@ -92,10 +111,10 @@ function MessageBubble({ message, character, theme }) {
     )
   }
 
-  if (message.isDrawPrompt) {
+  if (safeMessage.isDrawPrompt) {
     return (
       <div className="my-4 flex justify-center">
-        <p className={`animate-pulse text-sm italic ${theme.drawPrompt}`}>{message.content}</p>
+        <p className={`animate-pulse text-sm italic ${theme.drawPrompt}`}>{safeMessage.content}</p>
       </div>
     )
   }
@@ -114,7 +133,7 @@ function MessageBubble({ message, character, theme }) {
             : `rounded-tr-sm text-white ${theme.accentButton}`
         }`}
       >
-        {message.content}
+        {safeMessage.content}
       </div>
     </div>
   )
@@ -174,7 +193,10 @@ export default function ConsultChat() {
   const loadConversations = useCallback(async () => {
     try {
       const res = await fetch(`/api/conversations?deviceId=${deviceId.current}`)
-      if (res.ok) setConversations(await res.json())
+      if (res.ok) {
+        const list = await res.json()
+        setConversations(Array.isArray(list) ? list : [])
+      }
     } catch {}
   }, [])
 
@@ -227,7 +249,8 @@ export default function ConsultChat() {
       const res = await fetch(`/api/conversations/${conversation.id}`)
       if (!res.ok) return
       const data = await res.json()
-      setMessages(data.messages.length > 0 ? data.messages : [getOpeningMessage(characterId)])
+      const loadedMessages = Array.isArray(data?.messages) ? data.messages.map(normalizeMessage).filter(Boolean) : []
+      setMessages(loadedMessages.length > 0 ? loadedMessages : [getOpeningMessage(characterId)])
       setCurrentConvId(conversation.id)
       setDrawPrompt(null)
       setInput('')
@@ -444,7 +467,7 @@ export default function ConsultChat() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4">
-          {messages.map((message, index) => (
+          {(Array.isArray(messages) ? messages : []).map((message, index) => (
             <MessageBubble key={index} message={message} character={character} theme={theme} />
           ))}
           {loading && <TypingIndicator characterEmoji={character.emoji} theme={theme} />}

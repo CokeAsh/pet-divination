@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func min() {
+func main() {
 	// 加载 .env（简单实现：读取项目根目录 .env）
 	loadEnv()
 

@@ -14,6 +14,12 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
+// drawCardsSignalRe 统一识别模型可能返回的抽牌信号写法：
+// [DRAW_CARDS] / 【DRAW_CARDS】 / (DRAW_CARDS) / （DRAW_CARDS）
+// 注意：Go 的 regexp 不支持对全角括号使用反斜杠转义（例如 \【 会报错），
+// 因此这里使用显式 alternation 来匹配不同括号字符。
+var drawCardsSignalRe = regexp.MustCompile(`(?:\[|【|\(|（)DRAW_CARDS(?:\]|】|\)|）)`)
+
 // FortuneService 占卜服务
 type FortuneService struct{}
 
@@ -172,8 +178,8 @@ func (s *FortuneService) buildCleanMessages(messages []db.ChatMessage, character
 
 // normalizeSignals 标准化信号
 func (s *FortuneService) normalizeSignals(str string) string {
-	re := regexp.MustCompile(`[\[\【\(]DRAW_CARDS[\]\】\)]`)
-	return re.ReplaceAllString(str, "[DRAW_CARDS]")
+	// 将不同括号包裹的 DRAW_CARDS 信号归一化为标准形式，便于后续流程判断。
+	return drawCardsSignalRe.ReplaceAllString(str, "[DRAW_CARDS]")
 }
 
 // formatCardsForAI 格式化卡牌给 AI
